@@ -1,0 +1,6 @@
+pymupdf
+google-generativeai
+pandas
+openpyxl
+requests
+pyinstaller
