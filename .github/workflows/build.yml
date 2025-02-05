@@ -1,38 +1,42 @@
-name: Build Windows Executable
+name: Build and Release EXE
 
 on:
   push:
     branches:
-      - master  # Déclenche uniquement sur la branche principale
-  workflow_dispatch:  # Permet un déclenchement manuel
+      - main
+  workflow_dispatch:  # Permet un lancement manuel
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: 🛎️ Checkout Repository
+      - name: 📥 Checkout du dépôt
         uses: actions/checkout@v4
 
-      - name: 🏗️ Setup Python
+      - name: 🛠️ Installation de Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      - name: 📦 Install dependencies
+      - name: 📦 Installation des dépendances
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🔑 Set up API key
+      - name: 🔑 Ajout de la clé API aux variables d'environnement
         run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
 
-      - name: 🏗️ Build Executable with PyInstaller
+      - name: 🔑 Créer un fichier .env avec la clé API
         run: |
-          python setup.py
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > config.env
 
-      - name: 📦 Upload Executable
+      - name: 🏗️ Compiler en exécutable avec PyInstaller
+        run: |
+          pyinstaller --onefile --name export_pdf --add-data "config.env;." --add-data "src/export_pdf.py;." src/export_pdf.py
+
+      - name: 🚀 Uploader l'exécutable en tant qu'artifact
         uses: actions/upload-artifact@v4
         with:
-          name: export_pdf
+          name: export_pdf_executable
           path: dist/export_pdf.exe
