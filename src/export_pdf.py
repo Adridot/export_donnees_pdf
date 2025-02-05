@@ -11,13 +11,23 @@ import requests
 ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()
 
-# 🔑 Récupérer la clé API depuis les variables d'environnement
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("❌ Clé API manquante ! Ajoute la clé dans les variables d'environnement.")
+# 📌 Vérification de la clé API via un fichier .env (inclus dans l'exécutable)
+API_KEY = None
 
-# 🔹 Configuration de Gemini API
-genai.configure(api_key=GEMINI_API_KEY)
+if os.path.exists("config.env"):
+    with open("config.env", "r") as f:
+        for line in f:
+            if line.startswith("GEMINI_API_KEY="):
+                API_KEY = line.strip().split("=")[1]
+
+# 📌 Vérification de la clé dans les variables d'environnement (fallback)
+if not API_KEY:
+    API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not API_KEY:
+    raise ValueError("⚠️ ERREUR : La clé API Gemini n'est pas définie !")
+
+genai.configure(api_key=API_KEY)
 
 # Sélection du modèle Gemini
 model = genai.GenerativeModel("gemini-1.5-flash")
