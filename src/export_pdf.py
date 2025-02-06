@@ -5,6 +5,8 @@ import google.generativeai as genai
 import pandas as pd
 import json
 
+from google.api_core.exceptions import InternalServerError
+
 # 🔑 Demande de la clé API Gemini
 API_KEY = input("🔑 Saisir la clé API Gemini : ").strip()
 genai.configure(api_key=API_KEY)
@@ -96,21 +98,22 @@ Contenu du fichier PDF :
         try:
             enforce_api_rate_limit()
             response = gemini_model.generate_content(prompt)
-            if response.status_code == 500:
-                print(f"🔄 Erreur 500 détectée. Tentative {attempt + 1}/{retries}")
-                if attempt < retries - 1:
-                    continue  # Retry immédiat
-                else:
-                    print("❌ Erreur persistante après plusieurs tentatives.")
-                    return None
             result = response.text
             if "```json" in result:
                 result = result.split("```json")[1].split("```")[0].strip()
             return json.loads(result)
         except json.JSONDecodeError as e:
             print(f"⚠️ Erreur de parsing JSON : {e}")
+            break  # Ne pas réessayer en cas d'erreur de parsing
+        except InternalServerError as e:
+            print(f"🔄 Erreur 500 détectée. Tentative {attempt + 1}/{retries}")
+            if attempt < retries - 1:
+                continue  # Retry immédiat
+            else:
+                print("❌ Erreur persistante après plusieurs tentatives.")
         except Exception as e:
             print(f"⚠️ Erreur avec Gemini : {e}")
+            break  # Ne pas réessayer pour d'autres types d'erreurs
     return None
 
 
