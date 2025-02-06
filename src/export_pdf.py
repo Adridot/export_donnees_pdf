@@ -106,7 +106,7 @@ Contenu du fichier PDF :
             print(f"⚠️ Erreur de parsing JSON : {e}")
             break  # Ne pas réessayer en cas d'erreur de parsing
         except InternalServerError as e:
-            print(f"🔄 Erreur 500 détectée. Tentative {attempt + 1}/{retries}")
+            print(f"🔄 Erreur 500 détectée (tentative {attempt + 1}/{retries}). Nouvelle tentative...")
             if attempt < retries - 1:
                 continue  # Retry immédiat
             else:
