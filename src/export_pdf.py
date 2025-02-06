@@ -93,7 +93,7 @@ def analyze_content_with_gemini(content):
 Contenu du fichier PDF :
         {content}
         """
-    retries = 2
+    retries = 5
     for attempt in range(retries):
         try:
             enforce_api_rate_limit()
