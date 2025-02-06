@@ -45,86 +45,71 @@ def extract_pdf_text(file_path):
 def generate_prompt(content):
     """Génère le prompt à partir du contenu du PDF."""
     return f"""
-Analyse ce document et extrais les informations suivantes :
-- Raison sociale
-- Sigle
-- Responsabilité légale
-- Adresse complète
-- Téléphone et portable
-- Email
-- Site Internet
-- SIRET
-- Code NACE
-- Assurance Travaux
-- Assurance Civile
-- Effectif moyen
-- Chiffre d'affaires HT
-- Qualifications professionnelles
-Donne la réponse au format JSON structuré.
+        Analyse ce document et extrais les informations suivantes :
+        - Raison sociale
+        - Sigle
+        - Responsabilité légale
+        - Adresse complète
+        - Téléphone et portable
+        - Email
+        - Site Internet
+        - SIRET
+        - Code NACE
+        - Assurance Travaux
+        - Assurance Civile
+        - Effectif moyen
+        - Chiffre d'affaires HT
+        - Qualifications professionnelles
 
-Donne la réponse au format **JSON** structuré, comme ceci :
-```json
-{{
-"Raison sociale": "...",
-"Sigle": "...",
-"Responsabilité légale": "...",
-"Adresse": "...",
-"Téléphone": "...",
-"Portable": "...",
-"E-mail": "...",
-"Site Internet": "...",
-"SIRET": "...",
-"Code NACE": "...",
-"Assurance Travaux": "...",
-"Assurance Civile": "...",
-"Effectif moyen": "...",
-"Chiffre d’affaires H.T.": "...",
-"Qualifications professionnelles": "..."
-}}
-```
-Contenu du fichier PDF :
+        Donne la réponse au format **JSON** structuré, comme ceci :
+        ```json
+        {{
+        "Raison sociale": "...",
+        "Sigle": "...",
+        "Responsabilité légale": "...",
+        "Adresse": "...",
+        "Téléphone": "...",
+        "Portable": "...",
+        "E-mail": "...",
+        "Site Internet": "...",
+        "SIRET": "...",
+        "Code NACE": "...",
+        "Assurance Travaux": "...",
+        "Assurance Civile": "...",
+        "Effectif moyen": "...",
+        "Chiffre d’affaires H.T.": "...",
+        "Qualifications professionnelles": "..."
+        }}
+        ```
+        Contenu du fichier PDF :
         {content}
         """
 
 
-def handle_api_errors(func):
-    """Décorateur pour gérer les erreurs API avec des tentatives de nouvelle exécution."""
-
-    def wrapper(*args, **kwargs):
-        max_retries = 5
-        attempt = 0
-        while attempt < max_retries:
-            try:
-                return func(*args, **kwargs)
-            except json.JSONDecodeError as e:
-                logging.error(f"⚠️ Erreur de parsing JSON : {e}")
-                break
-            except InternalServerError as e:
-                attempt += 1
-                logging.warning(f"🔄 Erreur 500 détectée (tentative {attempt}/{max_retries}). Nouvelle tentative...")
-                if attempt >= max_retries:
-                    logging.error("❌ Erreur persistante après plusieurs tentatives.")
-                    break
-            except ResourceExhausted as e:
-                logging.warning("⚠️ Quota d'API dépassé. Attente de 60 secondes avant de réessayer...")
-                time.sleep(60)
-            except Exception as e:
-                logging.error(f"⚠️ Erreur avec Gemini : {e}")
-                break
-        return None
-
-    return wrapper
-
-
-@handle_api_errors
 def analyze_content_with_gemini(content):
-    """Envoie le texte extrait à l'API Gemini et récupère les informations formatées."""
+    """Envoie le texte extrait à l'API Gemini et récupère les informations formatées avec gestion des erreurs et retries."""
     prompt = generate_prompt(content)
-    response = gemini_model.generate_content(prompt)
-    result = response.text
-    if "```json" in result:
-        result = result.split("```json")[1].split("```")[0].strip()
-    return json.loads(result) if result else None
+    retries = 5
+    attempt = 0
+    while attempt < retries:
+        try:
+            response = gemini_model.generate_content(prompt)
+            result = response.text
+            if "```json" in result:
+                result = result.split("```json")[1].split("```")[0].strip()
+            return json.loads(result)
+        except json.JSONDecodeError:
+            return None
+        except InternalServerError:
+            attempt += 1
+            logging.warning(f"🔄 Erreur 500 détectée (tentative {attempt}/{retries}). Nouvelle tentative...")
+        except ResourceExhausted:
+            logging.warning("⚠️ Quota d'API dépassé. Attente de 60 secondes avant de réessayer...")
+            time.sleep(60)
+        except Exception as e:
+            logging.error(f"⚠️ Erreur avec Gemini : {e}")
+            break
+    return None
 
 
 def process_pdf_folder(folder_path):
@@ -143,12 +128,13 @@ def process_pdf_folder(folder_path):
                 else:
                     print(" ⚠️")
                     logging.warning(f"⚠️ Erreur lors du traitement de {file_name}, nouvelle tentative...")
+                    print(f"🔄 Retraitement du fichier : {file_name}...")
                     extracted_info = analyze_content_with_gemini(pdf_text)
-                    if extracted_info is not None:
+                    if extracted_info:
                         extracted_data.append(extracted_info)
-                        logging.info(f"🔄 Traitement du fichier : {file_name}... ✅")
+                        print(f"✅ Succès après retry pour {file_name}")
                     else:
-                        logging.error(f"❌ Impossible de traiter {file_name} après une nouvelle tentative.")
+                        logging.error(f"❌ Impossible de traiter {file_name} après plusieurs tentatives.")
     if extracted_data:
         df = pd.DataFrame(extracted_data, columns=EXCEL_COLUMNS)
         df["Qualifications professionnelles"] = df["Qualifications professionnelles"].str.replace(";", "\n")
