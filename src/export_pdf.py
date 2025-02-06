@@ -45,12 +45,11 @@ def enforce_api_rate_limit():
 
     if request_counter % MAX_REQUESTS_BEFORE_PAUSE == 0:
         print("⏳ Limite atteinte ! Pause de 1 minute...")
-        time.sleep(60)  # Pause de 1 minute
+        time.sleep(60)
 
 
 def analyze_content_with_gemini(content):
-    """Envoie le texte extrait à l'API Gemini et récupère les informations formatées."""
-
+    """Envoie le texte extrait à l'API Gemini et récupère les informations formatées, avec retry en cas d'erreur 500."""
     prompt = f"""
         Analyse ce document et extrais les informations suivantes :
         - Raison sociale
@@ -92,24 +91,26 @@ def analyze_content_with_gemini(content):
 Contenu du fichier PDF :
         {content}
         """
-
-    try:
-        enforce_api_rate_limit()  # 🔹 Vérifie la limite d'API avant d'envoyer la requête
-        response = gemini_model.generate_content(prompt)
-        result = response.text  # Obtenir le texte brut
-
-        if "```json" in result:
-            result = result.split("```json")[1].split("```")[0].strip()  # Extraction JSON
-
-        # Utilisation de json.loads() pour éviter les erreurs de `null`
-        parsed_data = json.loads(result)
-
-        return parsed_data
-    except json.JSONDecodeError as e:
-        print(f"⚠️ Erreur de parsing JSON : {e}")
-    except Exception as e:
-        print(f"⚠️ Erreur avec Gemini : {e}")
-
+    retries = 2
+    for attempt in range(retries):
+        try:
+            enforce_api_rate_limit()
+            response = gemini_model.generate_content(prompt)
+            if response.status_code == 500:
+                print(f"🔄 Erreur 500 détectée. Tentative {attempt + 1}/{retries}")
+                if attempt < retries - 1:
+                    continue  # Retry immédiat
+                else:
+                    print("❌ Erreur persistante après plusieurs tentatives.")
+                    return None
+            result = response.text
+            if "```json" in result:
+                result = result.split("```json")[1].split("```")[0].strip()
+            return json.loads(result)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Erreur de parsing JSON : {e}")
+        except Exception as e:
+            print(f"⚠️ Erreur avec Gemini : {e}")
     return None
 
 
@@ -135,8 +136,7 @@ def process_pdf_folder(folder_path):
     # 📊 Génération du fichier Excel
     if extracted_data:
         df = pd.DataFrame(extracted_data, columns=EXCEL_COLUMNS)
-        df["Qualifications professionnelles"] = df["Qualifications professionnelles"].str.replace(";",
-                                                                                                  "\n")  # Retour à la ligne
+        df["Qualifications professionnelles"] = df["Qualifications professionnelles"].str.replace(";", "\n")
         output_file = os.path.join(folder_path, "export_qualifications.xlsx")
         df.to_excel(output_file, index=False)
         print(f"✅ Extraction terminée ! Fichier généré : {output_file}")
