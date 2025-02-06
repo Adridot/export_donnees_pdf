@@ -86,7 +86,7 @@ def generate_prompt(content):
         """
 
 
-def analyze_content_with_gemini(content):
+def analyze_content_with_gemini(content, file_name):
     """Envoie le texte extrait à l'API Gemini et récupère les informations formatées avec gestion des erreurs et retries."""
     prompt = generate_prompt(content)
     retries = 5
@@ -102,12 +102,14 @@ def analyze_content_with_gemini(content):
             return None
         except InternalServerError:
             attempt += 1
-            logging.warning(f"🔄 Erreur 500 détectée (tentative {attempt}/{retries}). Nouvelle tentative...")
+            logging.warning(
+                f"🔄 Erreur 500 détectée sur {file_name} (tentative {attempt}/{retries}). Nouvelle tentative...")
         except ResourceExhausted:
-            logging.warning("⚠️ Quota d'API dépassé. Attente de 60 secondes avant de réessayer...")
+            logging.warning(
+                f"⚠️ Quota d'API dépassé lors du traitement de {file_name}. Attente de 60 secondes avant de réessayer...")
             time.sleep(60)
         except Exception as e:
-            logging.error(f"⚠️ Erreur avec Gemini : {e}")
+            logging.error(f"⚠️ Erreur avec Gemini sur {file_name} : {e}")
             break
     return None
 
@@ -121,7 +123,7 @@ def process_pdf_folder(folder_path):
             print(f"📄 Traitement du fichier : {file_name}...", end="")
             pdf_text = extract_pdf_text(full_path)
             if pdf_text:
-                extracted_info = analyze_content_with_gemini(pdf_text)
+                extracted_info = analyze_content_with_gemini(pdf_text, file_name)
                 if extracted_info:
                     extracted_data.append(extracted_info)
                     print(" ✅")
@@ -129,7 +131,7 @@ def process_pdf_folder(folder_path):
                     print(" ⚠️")
                     logging.warning(f"⚠️ Erreur lors du traitement de {file_name}, nouvelle tentative...")
                     print(f"🔄 Retraitement du fichier : {file_name}...")
-                    extracted_info = analyze_content_with_gemini(pdf_text)
+                    extracted_info = analyze_content_with_gemini(pdf_text, file_name)
                     if extracted_info:
                         extracted_data.append(extracted_info)
                         print(f"✅ Succès après retry pour {file_name}")
