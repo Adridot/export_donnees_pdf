@@ -97,7 +97,7 @@ def handle_api_errors(func):
                 return func(*args, **kwargs)
             except json.JSONDecodeError as e:
                 logging.error(f"⚠️ Erreur de parsing JSON : {e}")
-                break  # Ne pas réessayer en cas d'erreur de parsing
+                break
             except InternalServerError as e:
                 attempt += 1
                 logging.warning(f"🔄 Erreur 500 détectée (tentative {attempt}/{max_retries}). Nouvelle tentative...")
@@ -106,10 +106,10 @@ def handle_api_errors(func):
                     break
             except ResourceExhausted as e:
                 logging.warning("⚠️ Quota d'API dépassé. Attente de 60 secondes avant de réessayer...")
-                time.sleep(60)  # Pause de 60 secondes avant de réessayer
+                time.sleep(60)
             except Exception as e:
                 logging.error(f"⚠️ Erreur avec Gemini : {e}")
-                break  # Ne pas réessayer pour d'autres types d'erreurs
+                break
         return None
 
     return wrapper
@@ -132,19 +132,17 @@ def process_pdf_folder(folder_path):
     for file_name in os.listdir(folder_path):
         if file_name.endswith(".pdf"):
             full_path = os.path.join(folder_path, file_name)
-            logging.info(f"📄 Traitement du fichier : {file_name}... ", end="")
+            print(f"📄 Traitement du fichier : {file_name}...", end="")
             pdf_text = extract_pdf_text(full_path)
             if pdf_text:
                 extracted_info = analyze_content_with_gemini(pdf_text)
                 if extracted_info:
                     extracted_data.append(extracted_info)
-                    logging.info("✅")
+                    print(" ✅")
                 else:
                     logging.warning(f"⚠️ Aucune réponse obtenue pour {file_name}")
             else:
                 logging.warning(f"⚠️ Aucun texte extrait pour {file_name}")
-
-    # 📊 Génération du fichier Excel
     if extracted_data:
         df = pd.DataFrame(extracted_data, columns=EXCEL_COLUMNS)
         df["Qualifications professionnelles"] = df["Qualifications professionnelles"].str.replace(";", "\n")
@@ -152,6 +150,7 @@ def process_pdf_folder(folder_path):
         df.to_excel(output_file, index=False)
         logging.info(f"✅ Extraction terminée ! Fichier généré : {output_file}")
 
+
 if __name__ == "__main__":
     folder_path = input("Entrez le chemin du dossier contenant les fichiers PDF : ")
-    process_pdf_folder(folder_path)    
+    process_pdf_folder(folder_path)
