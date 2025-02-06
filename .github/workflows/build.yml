@@ -1,4 +1,4 @@
-name: Build Windows Executable
+name: Build Executables
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:  # Permet un déclenchement manuel
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -24,12 +24,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🏗️ Build Executable with PyInstaller
+      - name: 🏗️ Build Windows Executable
         run: |
           python setup.py
 
-      - name: 📦 Upload Executable
+      - name: 📦 Upload Windows Executable
         uses: actions/upload-artifact@v4
         with:
-          name: export_pdf
+          name: export_pdf_windows
           path: dist/export_pdf.exe
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: 🛎️ Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🏗️ Build macOS Executable
+        run: |
+          python setup.py
+
+      - name: 📦 Upload macOS Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: export_pdf_macos
+          path: dist/export_pdf
