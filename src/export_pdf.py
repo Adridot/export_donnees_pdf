@@ -4,8 +4,7 @@ import fitz  # PyMuPDF
 import google.generativeai as genai
 import pandas as pd
 import json
-
-from google.api_core.exceptions import InternalServerError
+from google.api_core.exceptions import InternalServerError, ResourceExhausted
 
 # 🔑 Demande de la clé API Gemini
 API_KEY = input("🔑 Saisir la clé API Gemini : ").strip()
@@ -20,10 +19,6 @@ EXCEL_COLUMNS = [
     "Assurance Civile", "Effectif moyen", "Chiffre d’affaires H.T.", "Qualifications professionnelles"
 ]
 
-# ⏳ Gestion du quota API (pause de 1 min toutes les 10 requêtes)
-MAX_REQUESTS_BEFORE_PAUSE = 10
-request_counter = 0
-
 # 📑 Sélection du modèle Gemini
 gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -36,23 +31,13 @@ def extract_pdf_text(file_path):
             for page in doc:
                 text += page.get_text() + "\n"
     except Exception as e:
-        print(f"❌ Erreur lors de l'extraction du texte ({file_path}): {e}")
+        print(f"❌ Erreur lors de l'extraction du texte ({file_path}) : {e}")
     return text
 
 
-def enforce_api_rate_limit():
-    """Gère le quota d'appels API en ajoutant une pause de 1 minute toutes les 10 requêtes."""
-    global request_counter
-    request_counter += 1
-
-    if request_counter % MAX_REQUESTS_BEFORE_PAUSE == 0:
-        print("⏳ Limite atteinte ! Pause de 1 minute...")
-        time.sleep(60)
-
-
-def analyze_content_with_gemini(content):
-    """Envoie le texte extrait à l'API Gemini et récupère les informations formatées, avec retry en cas d'erreur 500."""
-    prompt = f"""
+def generate_prompt(content):
+    """Génère le prompt à partir du contenu du PDF."""
+    return f"""
         Analyse ce document et extrais les informations suivantes :
         - Raison sociale
         - Sigle
@@ -88,44 +73,59 @@ def analyze_content_with_gemini(content):
         "Chiffre d’affaires H.T.": "...",
         "Qualifications professionnelles": "..."
         }}
-```
-
-Contenu du fichier PDF :
+        ```
+        Contenu du fichier PDF :
         {content}
         """
-    retries = 5
-    for attempt in range(retries):
-        try:
-            enforce_api_rate_limit()
-            response = gemini_model.generate_content(prompt)
-            result = response.text
-            if "```json" in result:
-                result = result.split("```json")[1].split("```")[0].strip()
-            return json.loads(result)
-        except json.JSONDecodeError as e:
-            print(f"⚠️ Erreur de parsing JSON : {e}")
-            break  # Ne pas réessayer en cas d'erreur de parsing
-        except InternalServerError as e:
-            print(f"🔄 Erreur 500 détectée (tentative {attempt + 1}/{retries}). Nouvelle tentative...")
-            if attempt < retries - 1:
-                continue  # Retry immédiat
-            else:
-                print("❌ Erreur persistante après plusieurs tentatives.")
-        except Exception as e:
-            print(f"⚠️ Erreur avec Gemini : {e}")
-            break  # Ne pas réessayer pour d'autres types d'erreurs
-    return None
+
+
+def handle_api_errors(func):
+    """Décorateur pour gérer les erreurs API avec des tentatives de nouvelle exécution."""
+
+    def wrapper(*args, **kwargs):
+        max_retries = 5
+        attempt = 0
+        while attempt < max_retries:
+            try:
+                return func(*args, **kwargs)
+            except json.JSONDecodeError as e:
+                print(f"⚠️ Erreur de parsing JSON : {e}")
+                break  # Ne pas réessayer en cas d'erreur de parsing
+            except InternalServerError as e:
+                attempt += 1
+                print(f"🔄 Erreur 500 détectée (tentative {attempt}/{max_retries}). Nouvelle tentative...")
+                if attempt >= max_retries:
+                    print("❌ Erreur persistante après plusieurs tentatives.")
+                    break
+            except ResourceExhausted as e:
+                print("⚠️ Quota d'API dépassé. Attente de 60 secondes avant de réessayer...")
+                time.sleep(60)  # Pause de 60 secondes avant de réessayer
+            except Exception as e:
+                print(f"⚠️ Erreur avec Gemini : {e}")
+                break  # Ne pas réessayer pour d'autres types d'erreurs
+        return None
+
+    return wrapper
+
+
+@handle_api_errors
+def analyze_content_with_gemini(content):
+    """Envoie le texte extrait à l'API Gemini et récupère les informations formatées."""
+    prompt = generate_prompt(content)
+    response = gemini_model.generate_content(prompt)
+    result = response.text
+    if "```json" in result:
+        result = result.split("```json")[1].split("```")[0].strip()
+    return json.loads(result)
 
 
 def process_pdf_folder(folder_path):
     """Parcourt un dossier, extrait et analyse les PDF puis génère un fichier Excel."""
     extracted_data = []
-
     for file_name in os.listdir(folder_path):
         if file_name.endswith(".pdf"):
             full_path = os.path.join(folder_path, file_name)
             print(f"📄 Traitement du fichier : {file_name}")
-
             pdf_text = extract_pdf_text(full_path)
             if pdf_text:
                 extracted_info = analyze_content_with_gemini(pdf_text)
