@@ -48,7 +48,7 @@ def generate_prompt(content):
 Analyse ce document et extrais les informations suivantes :
 - Raison sociale
 - Sigle
-- Responsabilité légale (Nom et fonction des principaux responsables légaux, ex: "MERGUI CYRIL RESPONSABLE DE SERVICE" ou "PILLOT EPOUSE NAHI CATHERINE GÉRANT(E) ASSOCIÉ(E) MAJORITAIRE / NAHI NORDINE CO-GÉRANT")
+- Responsabilité légale
 - Adresse complète
 - Téléphone et portable
 - Email
@@ -58,8 +58,9 @@ Analyse ce document et extrais les informations suivantes :
 - Assurance Travaux
 - Assurance Civile
 - Effectif moyen
-- Chiffre d'affaires HT (si disponible)
-- Qualifications professionnelles (avec retour à la ligne entre chaque entrée)
+- Chiffre d'affaires HT
+- Qualifications professionnelles
+Donne la réponse au format JSON structuré.
 
 Donne la réponse au format **JSON** structuré, comme ceci :
 ```json
@@ -123,7 +124,7 @@ def analyze_content_with_gemini(content):
     result = response.text
     if "```json" in result:
         result = result.split("```json")[1].split("```")[0].strip()
-    return json.loads(result)
+    return json.loads(result) if result else None
 
 
 def process_pdf_folder(folder_path):
@@ -140,9 +141,14 @@ def process_pdf_folder(folder_path):
                     extracted_data.append(extracted_info)
                     print(" ✅")
                 else:
-                    logging.warning(f"⚠️ Aucune réponse obtenue pour {file_name}")
-            else:
-                logging.warning(f"⚠️ Aucun texte extrait pour {file_name}")
+                    print(" ⚠️")
+                    logging.warning(f"⚠️ Erreur lors du traitement de {file_name}, nouvelle tentative...")
+                    extracted_info = analyze_content_with_gemini(pdf_text)
+                    if extracted_info is not None:
+                        extracted_data.append(extracted_info)
+                        logging.info(f"🔄 Traitement du fichier : {file_name}... ✅")
+                    else:
+                        logging.error(f"❌ Impossible de traiter {file_name} après une nouvelle tentative.")
     if extracted_data:
         df = pd.DataFrame(extracted_data, columns=EXCEL_COLUMNS)
         df["Qualifications professionnelles"] = df["Qualifications professionnelles"].str.replace(";", "\n")
