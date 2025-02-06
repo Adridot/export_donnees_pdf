@@ -4,13 +4,20 @@ import fitz  # PyMuPDF
 import google.generativeai as genai
 import pandas as pd
 import json
+import logging
 from google.api_core.exceptions import InternalServerError, ResourceExhausted
+
+# Configuration du logger
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 # 🔑 Demande de la clé API Gemini
 API_KEY = input("🔑 Saisir la clé API Gemini : ").strip()
 genai.configure(api_key=API_KEY)
 
-print("✅ Clé API ajoutée avec succès !")
+logging.info("✅ Clé API ajoutée avec succès !")
 
 # 📌 Définition des colonnes pour le fichier Excel
 EXCEL_COLUMNS = [
@@ -31,50 +38,50 @@ def extract_pdf_text(file_path):
             for page in doc:
                 text += page.get_text() + "\n"
     except Exception as e:
-        print(f"❌ Erreur lors de l'extraction du texte ({file_path}) : {e}")
+        logging.error(f"❌ Erreur lors de l'extraction du texte ({file_path}) : {e}")
     return text
 
 
 def generate_prompt(content):
     """Génère le prompt à partir du contenu du PDF."""
     return f"""
-        Analyse ce document et extrais les informations suivantes :
-        - Raison sociale
-        - Sigle
-        - Responsabilité légale (Nom et fonction des principaux responsables légaux, ex: "MERGUI CYRIL RESPONSABLE DE SERVICE" ou "PILLOT EPOUSE NAHI CATHERINE GÉRANT(E) ASSOCIÉ(E) MAJORITAIRE / NAHI NORDINE CO-GÉRANT")
-        - Adresse complète
-        - Téléphone et portable
-        - Email
-        - Site Internet
-        - SIRET
-        - Code NACE
-        - Assurance Travaux
-        - Assurance Civile
-        - Effectif moyen
-        - Chiffre d'affaires HT (si disponible)
-        - Qualifications professionnelles (avec retour à la ligne entre chaque entrée)
+Analyse ce document et extrais les informations suivantes :
+- Raison sociale
+- Sigle
+- Responsabilité légale (Nom et fonction des principaux responsables légaux, ex: "MERGUI CYRIL RESPONSABLE DE SERVICE" ou "PILLOT EPOUSE NAHI CATHERINE GÉRANT(E) ASSOCIÉ(E) MAJORITAIRE / NAHI NORDINE CO-GÉRANT")
+- Adresse complète
+- Téléphone et portable
+- Email
+- Site Internet
+- SIRET
+- Code NACE
+- Assurance Travaux
+- Assurance Civile
+- Effectif moyen
+- Chiffre d'affaires HT (si disponible)
+- Qualifications professionnelles (avec retour à la ligne entre chaque entrée)
 
-        Donne la réponse au format **JSON** structuré, comme ceci :
-        ```json
-        {{
-        "Raison sociale": "...",
-        "Sigle": "...",
-        "Responsabilité légale": "...",
-        "Adresse": "...",
-        "Téléphone": "...",
-        "Portable": "...",
-        "E-mail": "...",
-        "Site Internet": "...",
-        "SIRET": "...",
-        "Code NACE": "...",
-        "Assurance Travaux": "...",
-        "Assurance Civile": "...",
-        "Effectif moyen": "...",
-        "Chiffre d’affaires H.T.": "...",
-        "Qualifications professionnelles": "..."
-        }}
-        ```
-        Contenu du fichier PDF :
+Donne la réponse au format **JSON** structuré, comme ceci :
+```json
+{{
+"Raison sociale": "...",
+"Sigle": "...",
+"Responsabilité légale": "...",
+"Adresse": "...",
+"Téléphone": "...",
+"Portable": "...",
+"E-mail": "...",
+"Site Internet": "...",
+"SIRET": "...",
+"Code NACE": "...",
+"Assurance Travaux": "...",
+"Assurance Civile": "...",
+"Effectif moyen": "...",
+"Chiffre d’affaires H.T.": "...",
+"Qualifications professionnelles": "..."
+}}
+```
+Contenu du fichier PDF :
         {content}
         """
 
@@ -89,19 +96,19 @@ def handle_api_errors(func):
             try:
                 return func(*args, **kwargs)
             except json.JSONDecodeError as e:
-                print(f"⚠️ Erreur de parsing JSON : {e}")
+                logging.error(f"⚠️ Erreur de parsing JSON : {e}")
                 break  # Ne pas réessayer en cas d'erreur de parsing
             except InternalServerError as e:
                 attempt += 1
-                print(f"🔄 Erreur 500 détectée (tentative {attempt}/{max_retries}). Nouvelle tentative...")
+                logging.warning(f"🔄 Erreur 500 détectée (tentative {attempt}/{max_retries}). Nouvelle tentative...")
                 if attempt >= max_retries:
-                    print("❌ Erreur persistante après plusieurs tentatives.")
+                    logging.error("❌ Erreur persistante après plusieurs tentatives.")
                     break
             except ResourceExhausted as e:
-                print("⚠️ Quota d'API dépassé. Attente de 60 secondes avant de réessayer...")
+                logging.warning("⚠️ Quota d'API dépassé. Attente de 60 secondes avant de réessayer...")
                 time.sleep(60)  # Pause de 60 secondes avant de réessayer
             except Exception as e:
-                print(f"⚠️ Erreur avec Gemini : {e}")
+                logging.error(f"⚠️ Erreur avec Gemini : {e}")
                 break  # Ne pas réessayer pour d'autres types d'erreurs
         return None
 
@@ -125,16 +132,17 @@ def process_pdf_folder(folder_path):
     for file_name in os.listdir(folder_path):
         if file_name.endswith(".pdf"):
             full_path = os.path.join(folder_path, file_name)
-            print(f"📄 Traitement du fichier : {file_name}")
+            logging.info(f"📄 Traitement du fichier : {file_name}... ", end="")
             pdf_text = extract_pdf_text(full_path)
             if pdf_text:
                 extracted_info = analyze_content_with_gemini(pdf_text)
                 if extracted_info:
                     extracted_data.append(extracted_info)
+                    logging.info("✅")
                 else:
-                    print(f"⚠️ Aucune réponse obtenue pour {file_name}")
+                    logging.warning(f"⚠️ Aucune réponse obtenue pour {file_name}")
             else:
-                print(f"⚠️ Aucun texte extrait pour {file_name}")
+                logging.warning(f"⚠️ Aucun texte extrait pour {file_name}")
 
     # 📊 Génération du fichier Excel
     if extracted_data:
@@ -142,9 +150,8 @@ def process_pdf_folder(folder_path):
         df["Qualifications professionnelles"] = df["Qualifications professionnelles"].str.replace(";", "\n")
         output_file = os.path.join(folder_path, "export_qualifications.xlsx")
         df.to_excel(output_file, index=False)
-        print(f"✅ Extraction terminée ! Fichier généré : {output_file}")
-
+        logging.info(f"✅ Extraction terminée ! Fichier généré : {output_file}")
 
 if __name__ == "__main__":
     folder_path = input("Entrez le chemin du dossier contenant les fichiers PDF : ")
-    process_pdf_folder(folder_path)
+    process_pdf_folder(folder_path)    
