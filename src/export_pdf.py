@@ -20,7 +20,7 @@ EXCEL_COLUMNS = [
 ]
 
 # 📑 Sélection du modèle Gemini
-gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+gemini_model = genai.GenerativeModel("gemini-2.0-flash-lite")
 
 
 def extract_pdf_text(file_path):
